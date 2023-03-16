@@ -1,0 +1,13 @@
+{
+  "folders": [
+	{
+		"name": "portal-3",
+		"path": "../../../../VsCode/portal3/portal-3"
+	},
+	{
+		"name": "portal3",
+		"path": ".."
+	}
+],
+  "settings": {}
+}
