@@ -40,6 +40,15 @@ void setup()
 
   //rtc.set(0, 04, 15, 5, 30, 3, 23);
 
+  if (rtc.enableBattery())
+  {
+    Serial.println("Battery activated correctly.");
+  }
+  else
+  {
+    Serial.println("ERROR activating battery.");
+  }
+
   bool status;
 
   // default settings
