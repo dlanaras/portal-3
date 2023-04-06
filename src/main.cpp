@@ -21,12 +21,17 @@ int keyIndex = 0;          // your network key Index number (needed only for WEP
 unsigned int localPort = 2390; // local port to listen on
 
 char packetBuffer[256]; // buffer to hold incoming packet
+char ReplyBuffer[AMG88xx_PIXEL_ARRAY_SIZE] = "";     // a string to send back
+
+WiFiUDP Udp;
 
 Adafruit_AMG88xx amg;
 
 uRTCLib rtc(0x68);
 
 float pixels[AMG88xx_PIXEL_ARRAY_SIZE];
+
+void printWifiStatus();
 
 void setup()
 {
@@ -37,8 +42,39 @@ void setup()
 
   URTCLIB_WIRE.begin();
 
+  if (WiFi.status() == WL_NO_MODULE)
+  {
+    Serial.println("Communication with WiFi module failed!");
+    // don't continue
+    while (true)
+      ;
+  }
 
-  //rtc.set(0, 04, 15, 5, 30, 3, 23);
+  String fv = WiFi.firmwareVersion();
+  if (fv < WIFI_FIRMWARE_LATEST_VERSION)
+  {
+    Serial.println("Please upgrade the firmware");
+  }
+
+  // attempt to connect to WiFi network:
+  while (status != WL_CONNECTED)
+  {
+    Serial.print("Attempting to connect to SSID: ");
+    Serial.println(ssid);
+    // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
+    status = WiFi.begin(ssid, pass);
+
+    // wait 10 seconds for connection:
+    delay(10000);
+  }
+  Serial.println("Connected to WiFi");
+  printWifiStatus();
+
+  Serial.println("\nStarting connection to server...");
+  // if you get a connection, report back via serial:
+  Udp.begin(localPort);
+
+  // rtc.set(0, 04, 15, 5, 30, 3, 23);
 
   if (rtc.enableBattery())
   {
@@ -74,12 +110,39 @@ void loop()
 
   for (int i = 1; i <= AMG88xx_PIXEL_ARRAY_SIZE; i++)
   {
+    ReplyBuffer[i - 1] = pixels[i - 1];
     Serial.print(pixels[i - 1]);
     Serial.print(", ");
     if (i % 8 == 0)
       Serial.println();
   }
   Serial.println();
+
+  int packetSize = Udp.parsePacket();
+  if (packetSize)
+  {
+    Serial.print("Received packet of size ");
+    Serial.println(packetSize);
+    Serial.print("From ");
+    IPAddress remoteIp = Udp.remoteIP();
+    Serial.print(remoteIp);
+    Serial.print(", port ");
+    Serial.println(Udp.remotePort());
+
+    // read the packet into packetBufffer
+    int len = Udp.read(packetBuffer, 255);
+    if (len > 0)
+    {
+      packetBuffer[len] = 0;
+    }
+    Serial.println("Contents:");
+    Serial.println(packetBuffer);
+
+    // send a reply, to the IP address and port that sent us the packet we received
+    Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
+    Udp.write(ReplyBuffer);
+    Udp.endPacket();
+  }
 
   delay(1000);
 
@@ -112,4 +175,22 @@ void loop()
   // delay a second
   delay(2000);
   digitalWrite(PIN_RELAY_PUMP, LOW);
+}
+
+void printWifiStatus()
+{
+  // print the SSID of the network you're attached to:
+  Serial.print("SSID: ");
+  Serial.println(WiFi.SSID());
+
+  // print your board's IP address:
+  IPAddress ip = WiFi.localIP();
+  Serial.print("IP Address: ");
+  Serial.println(ip);
+
+  // print the received signal strength:
+  long rssi = WiFi.RSSI();
+  Serial.print("signal strength (RSSI):");
+  Serial.print(rssi);
+  Serial.println(" dBm");
 }
