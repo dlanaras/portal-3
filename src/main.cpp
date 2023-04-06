@@ -9,6 +9,8 @@
 #include <WiFiNINA.h>
 #include <WiFiUdp.h>
 
+#include <stdio.h>
+
 #define PIN_RELAY_PUMP 1
 
 int status = WL_IDLE_STATUS;
@@ -20,8 +22,8 @@ int keyIndex = 0;          // your network key Index number (needed only for WEP
 
 unsigned int localPort = 2390; // local port to listen on
 
-char packetBuffer[256]; // buffer to hold incoming packet
-char ReplyBuffer[AMG88xx_PIXEL_ARRAY_SIZE] = "";     // a string to send back
+char packetBuffer[256];                          // buffer to hold incoming packet
+char replyBuffer[AMG88xx_PIXEL_ARRAY_SIZE]; // a string to send back
 
 WiFiUDP Udp;
 
@@ -32,6 +34,8 @@ uRTCLib rtc(0x68);
 float pixels[AMG88xx_PIXEL_ARRAY_SIZE];
 
 void printWifiStatus();
+void handleUdp();
+void handleRtc();
 
 void setup()
 {
@@ -107,17 +111,44 @@ void loop()
 {
   // read all the pixels
   amg.readPixels(pixels);
-
   for (int i = 1; i <= AMG88xx_PIXEL_ARRAY_SIZE; i++)
   {
-    ReplyBuffer[i - 1] = pixels[i - 1];
-    Serial.print(pixels[i - 1]);
-    Serial.print(", ");
-    if (i % 8 == 0)
-      Serial.println();
+    // IMPORTANT: FIX
+    replyBuffer[i - 1] = pixels[i - 1];
   }
-  Serial.println();
 
+    handleUdp();
+
+    delay(1000);
+
+    handleRtc();
+
+    // digitalWrite(PIN_RELAY_PUMP, HIGH);
+    //  delay a second
+    // delay(1000);
+    // digitalWrite(PIN_RELAY_PUMP, LOW);
+  }
+
+void printWifiStatus()
+{
+  // print the SSID of the network you're attached to:
+  Serial.print("SSID: ");
+  Serial.println(WiFi.SSID());
+
+  // print your board's IP address:
+  IPAddress ip = WiFi.localIP();
+  Serial.print("IP Address: ");
+  Serial.println(ip);
+
+  // print the received signal strength:
+  long rssi = WiFi.RSSI();
+  Serial.print("signal strength (RSSI):");
+  Serial.print(rssi);
+  Serial.println(" dBm");
+}
+
+void handleUdp()
+{
   int packetSize = Udp.parsePacket();
   if (packetSize)
   {
@@ -140,12 +171,13 @@ void loop()
 
     // send a reply, to the IP address and port that sent us the packet we received
     Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
-    Udp.write(ReplyBuffer);
+    Udp.write(replyBuffer);
     Udp.endPacket();
   }
+}
 
-  delay(1000);
-
+void handleRtc()
+{
   rtc.refresh();
 
   Serial.print("RTC DateTime: 20");
@@ -170,27 +202,4 @@ void loop()
   Serial.print(amg.readThermistor());
 
   Serial.println();
-
-  digitalWrite(PIN_RELAY_PUMP, HIGH);
-  // delay a second
-  delay(2000);
-  digitalWrite(PIN_RELAY_PUMP, LOW);
-}
-
-void printWifiStatus()
-{
-  // print the SSID of the network you're attached to:
-  Serial.print("SSID: ");
-  Serial.println(WiFi.SSID());
-
-  // print your board's IP address:
-  IPAddress ip = WiFi.localIP();
-  Serial.print("IP Address: ");
-  Serial.println(ip);
-
-  // print the received signal strength:
-  long rssi = WiFi.RSSI();
-  Serial.print("signal strength (RSSI):");
-  Serial.print(rssi);
-  Serial.println(" dBm");
 }
