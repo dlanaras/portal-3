@@ -12,6 +12,7 @@
 #include <stdio.h>
 
 #define PIN_RELAY_PUMP 1
+#define PIN_ROTATO 7
 
 int status = WL_IDLE_STATUS;
 #include "arduino_secrets.h"
@@ -20,10 +21,9 @@ char ssid[] = SECRET_SSID; // your network SSID (name)
 char pass[] = SECRET_PASS; // your network password (use for WPA, or use as key for WEP)
 int keyIndex = 0;          // your network key Index number (needed only for WEP)
 
-unsigned int localPort = 2390; // local port to listen on
+unsigned int localPort = 8081; // local port to listen on
 
 char packetBuffer[256];                          // buffer to hold incoming packet
-char replyBuffer[AMG88xx_PIXEL_ARRAY_SIZE]; // a string to send back
 
 WiFiUDP Udp;
 
@@ -34,8 +34,9 @@ uRTCLib rtc(0x68);
 float pixels[AMG88xx_PIXEL_ARRAY_SIZE];
 
 void printWifiStatus();
-void handleUdp();
-void handleRtc();
+void UdpSendRtc();
+void UdpSendThermal();
+void UdpSendContent();
 
 void setup()
 {
@@ -78,7 +79,7 @@ void setup()
   // if you get a connection, report back via serial:
   Udp.begin(localPort);
 
-  // rtc.set(0, 04, 15, 5, 30, 3, 23);
+  //rtc.set(0, 10, 13, 5, 6, 4, 23);
 
   if (rtc.enableBattery())
   {
@@ -110,24 +111,49 @@ void setup()
 void loop()
 {
   // read all the pixels
-  amg.readPixels(pixels);
-  for (int i = 1; i <= AMG88xx_PIXEL_ARRAY_SIZE; i++)
-  {
-    // IMPORTANT: FIX
-    replyBuffer[i - 1] = pixels[i - 1];
-  }
 
-    handleUdp();
+
+  UdpSendContent("BEGIN");
+
+  UdpSendRtc();
+
+  UdpSendThermal();
+
+  /*int packetSize = Udp.parsePacket();
+  if (packetSize)
+  {
+    Serial.print("Received packet of size ");
+    Serial.println(packetSize);
+    Serial.print("From ");
+
+    Serial.print(remoteIp);
+    Serial.print(", port ");
+    Serial.println(Udp.remotePort());
+
+    // read the packet into packetBufffer
+    int len = Udp.read(packetBuffer, 255);
+    if (len > 0)
+    {
+      packetBuffer[len] = 0;
+    }
+    Serial.println("Contents:");
+    Serial.println(packetBuffer);
+
+    // send a reply, to the IP address and port that sent us the packet we received
+    }
+*/
+
 
     delay(1000);
 
-    handleRtc();
+
 
     // digitalWrite(PIN_RELAY_PUMP, HIGH);
     //  delay a second
     // delay(1000);
     // digitalWrite(PIN_RELAY_PUMP, LOW);
   }
+  
 
 void printWifiStatus()
 {
@@ -147,59 +173,34 @@ void printWifiStatus()
   Serial.println(" dBm");
 }
 
-void handleUdp()
-{
-  int packetSize = Udp.parsePacket();
-  if (packetSize)
-  {
-    Serial.print("Received packet of size ");
-    Serial.println(packetSize);
-    Serial.print("From ");
-    IPAddress remoteIp = Udp.remoteIP();
-    Serial.print(remoteIp);
-    Serial.print(", port ");
-    Serial.println(Udp.remotePort());
-
-    // read the packet into packetBufffer
-    int len = Udp.read(packetBuffer, 255);
-    if (len > 0)
-    {
-      packetBuffer[len] = 0;
-    }
-    Serial.println("Contents:");
-    Serial.println(packetBuffer);
-
-    // send a reply, to the IP address and port that sent us the packet we received
-    Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
-    Udp.write(replyBuffer);
-    Udp.endPacket();
-  }
-}
-
-void handleRtc()
+void UdpSendRtc()
 {
   rtc.refresh();
 
-  Serial.print("RTC DateTime: 20");
-  Serial.print(rtc.year());
-  Serial.print('-');
-  Serial.print(rtc.month());
-  Serial.print('-');
-  Serial.print(rtc.day());
+  char *datetime = "";
+  const char *format = "20%d-%d-%d %d:%d:%d DOW: %d";
 
-  Serial.print(' ');
+  sprintf(datetime, format, rtc.year(), rtc.month(), rtc.day(), rtc.hour(), rtc.minute(), rtc.second(), rtc.dayOfWeek());
 
-  Serial.print(rtc.hour());
-  Serial.print(':');
-  Serial.print(rtc.minute());
-  Serial.print(':');
-  Serial.print(rtc.second());
+  UdpSendContent(datetime);
+}
 
-  Serial.print(" DOW: ");
-  Serial.print(rtc.dayOfWeek());
+void UdpSendThermal()
+{
+  amg.readPixels(pixels);
+  char *thermalData = "";
 
-  Serial.print(" - Temp: ");
-  Serial.print(amg.readThermistor());
+  for (int i = 1; i <= AMG88xx_PIXEL_ARRAY_SIZE; i++)
+  {
+    sprintf(thermalData, "%f", pixels[i - 1]);
 
-  Serial.println();
+    UdpSendContent(thermalData);
+  }
+}
+
+void UdpSendContent(char *content)
+{
+  Udp.beginPacket("10.42.0.1", 8081);
+  Udp.write(content);
+  Udp.endPacket();
 }
