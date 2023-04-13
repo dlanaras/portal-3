@@ -30,8 +30,8 @@ unsigned int secondPort = 8082;
 char packetBuffer[256]; // buffer to hold incoming packet
 
 const char format[] = "20%d-%d-%d %d:%d:%d DOW: %d";
-char datetime[] = "";
-char thermalData[] = "";
+char datetime[35] = "";
+char thermalData[317] = "";
 int sentryMode = 1;
 int rotation = 15;
 
@@ -96,7 +96,7 @@ void setup()
   Udp.begin(firstPort);
   PumpUdp.begin(secondPort);
 
-  rtc.set(0, 10, 13, 5, 6, 4, 23);
+  // rtc.set(0, 10, 13, 5, 6, 4, 23);
 
   if (rtc.enableBattery())
   {
@@ -133,14 +133,14 @@ void loop()
 
   UdpSendContent("BEGIN");
 
-  UdpSendRtc();
+  // UdpSendRtc();
 
-  //UdpSendThermal();
+  UdpSendThermal();
 
   UdpSendContent("END");
 
   int packetSize = PumpUdp.parsePacket();
-  if(packetSize)
+  if (packetSize)
   {
     Serial.print("Received packet of size ");
     Serial.println(packetSize);
@@ -187,22 +187,23 @@ void loop()
     Serial.println(packetBuffer);
 
     sscanf(packetBuffer, "%d", &pos);
-    
-    if(pos >= 0 && pos <= 180)
+
+    if (pos >= 0 && pos <= 180)
     {
       rotation = pos;
     }
     // send a reply, to the IP address and port that sent us the packet we received
   }
-/*
-  if (sentryMode)
+
+  /*if (sentryMode)
   {
     int weight[3] = {0, 0, 0};
     for (int i = 1; i <= AMG88xx_PIXEL_ARRAY_SIZE; i++)
     {
       int direction = i % 8;
-      if (pixels[i - 1] > 25)
+      if (pixels[i - 1] > 70)
       {
+
         if (direction < 4) // to left
         {
           weight[0]++;
@@ -234,13 +235,13 @@ void loop()
     }
     else
     {
-      if (rotation >= MAX_RIGHT)
+      if (rotation >= MAX_ROTATO)
       {
-        rotation -= 1;
+        rotation -= 10;
       }
       else
       {
-        rotation += 1;
+        rotation += 10;
       }
     }
   }*/
@@ -275,9 +276,9 @@ void UdpSendRtc()
 
 void UdpSendThermal()
 {
-  for (int i = 1; i <= AMG88xx_PIXEL_ARRAY_SIZE; i++)
+  for (int i = 0; i < AMG88xx_PIXEL_ARRAY_SIZE; i++)
   {
-    sprintf(thermalData, "%f", pixels[i - 1]);
+    sprintf(thermalData, "%f", pixels[i]);
 
     UdpSendContent(thermalData);
   }
