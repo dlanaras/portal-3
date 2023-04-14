@@ -16,6 +16,7 @@
 #define PIN_RELAY_PUMP 1
 #define PIN_ROTATO 7
 #define MAX_ROTATO 180
+#define MIN_ROTATO 0
 
 int status = WL_IDLE_STATUS;
 #include "arduino_secrets.h"
@@ -34,6 +35,7 @@ char datetime[35] = "";
 char thermalData[317] = "";
 int sentryMode = 1;
 int rotation = 15;
+int direction = 0;
 
 Servo rotatoServo;
 
@@ -188,27 +190,27 @@ void loop()
 
     sscanf(packetBuffer, "%d", &pos);
 
-    if (pos >= 0 && pos <= 180)
+    if (pos >= MIN_ROTATO && pos <= MAX_ROTATO)
     {
       rotation = pos;
     }
     // send a reply, to the IP address and port that sent us the packet we received
   }
 
-  /*if (sentryMode)
+  if (sentryMode)
   {
     int weight[3] = {0, 0, 0};
     for (int i = 1; i <= AMG88xx_PIXEL_ARRAY_SIZE; i++)
     {
-      int direction = i % 8;
+      int displacement = i % 8;
       if (pixels[i - 1] > 70)
       {
 
-        if (direction < 4) // to left
+        if (displacement < 4) // to left
         {
           weight[0]++;
         }
-        else if (direction > 5) // to right
+        else if (displacement > 5) // to right
         {
           weight[2]++;
         }
@@ -221,7 +223,7 @@ void loop()
 
     if (weight[0] > weight[1] && weight[0] > weight[2]) // go left
     {
-      rotation -= 1;
+      rotation -= 10;
     }
     else if (weight[1] > weight[0] && weight[1] > weight[2]) // spurt water
     {
@@ -231,20 +233,25 @@ void loop()
     }
     else if (weight[2] > weight[0] && weight[2] > weight[1]) // go right
     {
-      rotation += 1;
+      rotation += 10;
     }
     else
     {
-      if (rotation >= MAX_ROTATO)
+      if (rotation >= MAX_ROTATO || rotation <= MIN_ROTATO)
       {
-        rotation -= 10;
+        direction = !direction;
       }
-      else
+
+      if (direction)
       {
         rotation += 10;
       }
+      else
+      {
+        rotation -= 10;
+      }
     }
-  }*/
+  }
 }
 
 void printWifiStatus()
