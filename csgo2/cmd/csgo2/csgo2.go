@@ -3,11 +3,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/gin-gonic/gin"
 	"log"
 	"net"
 	"os"
-
-	"github.com/gin-gonic/gin"
 )
 
 type Config struct {
@@ -40,6 +39,7 @@ func loadConfig() (*Config, error) {
 }
 
 var config *Config
+var frameBuf [64]float64
 
 func main() {
 	var err error
@@ -53,7 +53,14 @@ func main() {
 	router := gin.Default()
 	router.StaticFile("/", "index.html")
 	router.POST("/squirt", toggleSquirt)
-	router.Run(config.ListenAddr)
+	router.POST("/direction", changeDirection)
+	router.GET("/cam", func(c *gin.Context) {
+		c.JSON(200, gin.H{"frame": frameBuf})
+	})
+	err = router.Run(config.ListenAddr)
+	if err != nil {
+		return
+	}
 }
 
 func listenForFrames() {
@@ -69,12 +76,12 @@ func listenForFrames() {
 
 	log.Println("listening for frames on", config.IncomingFramePort)
 
-	frameBuf := make([]float64, 64)
+	//frameBuf := make([]float64, 64)
+	recvBuf := make([]byte, 1024)
 	currentPixel := 0
 
 	for {
-		recvBuf := make([]byte, 1024)
-		_, _, err := conn.ReadFromUDP(recvBuf)
+		n, _, err := conn.ReadFromUDP(recvBuf)
 		if err != nil {
 			log.Println(err)
 			continue
@@ -83,13 +90,26 @@ func listenForFrames() {
 		// "BEGIN" = set current pixel to 0
 		// otherwise every packet is a float64 for the current pixel
 
-		recv := string(recvBuf)
-
-		log.Printf("got '%s'", recv)
+		recv := string(recvBuf[:n])
 
 		if recv == "BEGIN" {
-			log.Println("starting new frame")
 			currentPixel = 0
+			continue
+		}
+
+		if recv == "END" {
+			log.Println("frame:")
+			for i := 0; i < 8; i++ {
+				for j := 0; j < 8; j++ {
+					fmt.Printf("%f ", frameBuf[i*8+j])
+				}
+				fmt.Println()
+			}
+			continue
+		}
+
+		if currentPixel == 64 {
+			log.Println("got more than 64 pixels, ignoring")
 			continue
 		}
 
@@ -99,22 +119,18 @@ func listenForFrames() {
 			continue
 		}
 
-		log.Println("got pixel", currentPixel, "with value", frameBuf[currentPixel])
-
-		if currentPixel == 63 {
-			log.Println("frame complete")
-			continue
-		}
-
 		currentPixel++
 	}
 }
 
 func toggleSquirt(c *gin.Context) {
 	var squirt bool
-	c.BindJSON(&squirt)
+	err := c.BindJSON(&squirt)
+	if err != nil {
+		return
+	}
 
-	conn, err := net.Dial("udp", config.ArduinoAddr+":1")
+	conn, err := net.Dial("udp", config.ArduinoAddr+":8082")
 	if err != nil {
 		fmt.Println(err)
 		c.JSON(500, gin.H{"error": "failed to connect to arduino"})
@@ -123,12 +139,36 @@ func toggleSquirt(c *gin.Context) {
 
 	if squirt {
 		log.Println("squirtin' time")
-		_, err = conn.Write([]byte("1"))
+		_, err = conn.Write([]byte("SAP"))
 	} else {
 		log.Println("no squirtin' time")
-		_, err = conn.Write([]byte("0"))
+		_, err = conn.Write([]byte("SAD"))
 	}
 
+	if err != nil {
+		log.Println(err)
+		c.JSON(500, gin.H{"error": "failed to send data to arduino"})
+		return
+	}
+
+	c.JSON(200, gin.H{"success": true})
+}
+
+func changeDirection(c *gin.Context) {
+	var direction int
+	err := c.BindJSON(&direction)
+	if err != nil {
+		return
+	}
+
+	conn, err := net.Dial("udp", config.ArduinoAddr+":8081")
+	if err != nil {
+		fmt.Println(err)
+		c.JSON(500, gin.H{"error": "failed to connect to arduino"})
+		return
+	}
+
+	_, err = conn.Write([]byte(fmt.Sprintf("%d", direction)))
 	if err != nil {
 		log.Println(err)
 		c.JSON(500, gin.H{"error": "failed to send data to arduino"})

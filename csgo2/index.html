@@ -1,26 +1,122 @@
 <!DOCTYPE html>
 <html lang="en">
-	<head>
-		<meta charset="UTF-8" />
-		<meta http-equiv="X-UA-Compatible" content="IE=edge" />
-		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<title>Document</title>
-	</head>
-	<body>
-		<label>
-			<input type="checkbox" id="squirt">
-			Squirty squirt squirt
-		</label>
-	</body>
+<head>
+    <meta charset="UTF-8"/>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Document</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chroma-js/2.4.2/chroma.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
 
-	<script>
-		const squirt = document.getElementById("squirt")
+        #scale {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 500px;
+            height: 40px;
+            padding: 0 10px;
+            background: linear-gradient(to right, blue, white, red);
+            color: white;
+        }
+    </style>
+</head>
+<body>
+<label>
+    <input type="checkbox" id="squirt">
+    Squirty squirt squirt
+</label>
 
-		squirt.addEventListener("change", async () => {
-			await fetch("/squirt", {
-				method: "POST",
-				body: JSON.stringify(squirt.checked)
-			})
-		})
-	</script>
+<br>
+
+<label>
+    Direction<br>
+    <input type="range" id="direction" min="0" max="180" value="90">
+</label><br>
+
+<canvas id="cam" width="500" height="500"></canvas><br>
+<div id="scale">
+    <div id="min">0</div>
+    <div id="max">100</div>
+</div>
+</body>
+
+<script>
+    const squirt = document.getElementById("squirt")
+    const direction = document.getElementById("direction")
+    const cam = document.getElementById("cam")
+    const ctx = cam.getContext("2d")
+
+    async function setSquirt() {
+        const resp = await fetch("/squirt", {
+            method: "POST",
+            body: JSON.stringify(squirt.checked)
+        })
+        const respJson = await resp.json()
+
+        if (respJson.error) {
+            alert(respJson.error)
+        }
+    }
+
+    async function setDirection() {
+        const resp = await fetch("/direction", {
+            method: "POST",
+            body: JSON.stringify(180 - +direction.value)
+        })
+        const respJson = await resp.json()
+
+        if (respJson.error) {
+            alert(respJson.error)
+        }
+    }
+
+    squirt.addEventListener("change", setSquirt)
+
+    direction.addEventListener("input", setDirection)
+
+    window.addEventListener("keydown", e => {
+        if (e.key === "ArrowRight") {
+            direction.value = +direction.value + 10
+            setDirection()
+        } else if (e.key === "ArrowLeft") {
+            direction.value = +direction.value - 10
+            setDirection()
+        } else if (e.key === " ") {
+            squirt.checked = !squirt.checked
+            setSquirt()
+        }
+    })
+
+    const CANVAS_WIDTH = 500
+    const CANVAS_HEIGHT = 500
+    const CAM_WIDTH = 8
+    const CAM_HEIGHT = 8
+
+    async function updateCam() {
+        const resp = await fetch("/cam")
+        const respJson = await resp.json()
+        // 8x8
+        const temperatureArray = respJson.frame
+
+        const scale = chroma.scale(["blue", "white", "red"]);
+        const maxTemp = Math.max(...temperatureArray)
+        const minTemp = Math.min(...temperatureArray)
+        document.getElementById("min").innerText = minTemp
+        document.getElementById("max").innerText = maxTemp
+
+        for (const i in temperatureArray) {
+            const temp = temperatureArray[i]
+            const color = scale((temp - minTemp) / (maxTemp - minTemp)).hex()
+            const x = i % CAM_WIDTH
+            const y = Math.floor(i / CAM_WIDTH)
+            ctx.fillStyle = color
+            ctx.fillRect(x * CANVAS_WIDTH / CAM_WIDTH, y * CANVAS_HEIGHT / CAM_HEIGHT, CANVAS_WIDTH / CAM_WIDTH, CANVAS_HEIGHT / CAM_HEIGHT)
+        }
+    }
+
+    setInterval(updateCam, 100)
+</script>
 </html>
