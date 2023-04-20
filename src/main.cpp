@@ -50,17 +50,16 @@ Adafruit_AMG88xx amg;
 uRTCLib rtc(0x68);
 
 #include <SPI.h>
-// #include <SD.h>
-#include "SdFat.h"
-SdFat SD;
-
-#define SD_CS_PIN SS
+#include <SD.h>
+//#include "SdFat.h"
+//SdFat SD;
+#define SD_CS_PIN 6
 File logFile;
 
 float pixels[AMG88xx_PIXEL_ARRAY_SIZE];
 
 void printWifiStatus();
-void UdpSendRtc();
+//void UdpSendRtc();
 void UdpSendThermal();
 void UdpSendContent(const char content[]);
 void logInformation(const char *content);
@@ -68,16 +67,18 @@ const char *readLogFile();
 
 void setup()
 {
+  delay(5000);
+  Serial.println("test");
   pinMode(PIN_RELAY_PUMP, OUTPUT);
 
-  if (!SD.begin(SD_CS_PIN))
+  /*if (!SD.begin(SD_CS_PIN))
   {
     Serial.println("initialization failed!");
-    return;
   }
-  logFile = SD.open("test.txt", FILE_WRITE);
 
-  logInformation("initialization done.");
+  logFile = SD.open("test.txt", FILE_WRITE);*/
+
+   logInformation("initialization done.");
 
   Serial.begin(9600);
   logInformation("AMG88xx pixels");
@@ -159,7 +160,7 @@ void loop()
   UdpSendThermal();
   UdpSendContent("ENDT");
   UdpSendContent("BEGINL");
-  UdpSendContent(readLogFile());
+  //UdpSendContent(readLogFile());
   UdpSendContent("ENDL");
   
   int packetSize = PumpUdp.parsePacket();
@@ -317,15 +318,17 @@ void logInformation(const char *content)
   {
     sprintf(datetime, format, rtc.year(), rtc.month(), rtc.day(), rtc.hour(), rtc.minute(), rtc.second(), rtc.dayOfWeek());
 
-    logFile.print(datetime);
-    logFile.println(content);
+    Serial.println(content);
+    //logFile.print(datetime);
+    //logFile.println(content);
     // close the file:
-    logFile.close();
+    //logFile.close();
   }
   else
   {
     // if the file didn't open, print an error:
-    Serial.println("error opening test.txt");
+    // Serial.println("error opening test.txt");
+    Serial.println(content);
   }
 }
 
