@@ -8,8 +8,9 @@
 
 #include <WiFiNINA.h>
 #include <WiFiUdp.h>
-
 #include <stdio.h>
+
+#include <string>
 
 #include <Servo.h>
 
@@ -30,6 +31,7 @@ unsigned int secondPort = 8082;
 
 char packetBuffer[256]; // buffer to hold incoming packet
 
+char packetSizeString[255];
 const char format[] = "20%d-%d-%d %d:%d:%d DOW: %d";
 char datetime[35] = "";
 char thermalData[317] = "";
@@ -47,19 +49,38 @@ Adafruit_AMG88xx amg;
 
 uRTCLib rtc(0x68);
 
+#include <SPI.h>
+// #include <SD.h>
+#include "SdFat.h"
+SdFat SD;
+
+#define SD_CS_PIN SS
+File logFile;
+
 float pixels[AMG88xx_PIXEL_ARRAY_SIZE];
 
 void printWifiStatus();
 void UdpSendRtc();
 void UdpSendThermal();
-void UdpSendContent(char content[]);
+void UdpSendContent(const char content[]);
+void logInformation(const char *content);
+const char *readLogFile();
 
 void setup()
 {
   pinMode(PIN_RELAY_PUMP, OUTPUT);
 
+  if (!SD.begin(SD_CS_PIN))
+  {
+    Serial.println("initialization failed!");
+    return;
+  }
+  logFile = SD.open("test.txt", FILE_WRITE);
+
+  logInformation("initialization done.");
+
   Serial.begin(9600);
-  Serial.println(F("AMG88xx pixels"));
+  logInformation("AMG88xx pixels");
 
   rotatoServo.attach(PIN_ROTATO);
 
@@ -67,7 +88,7 @@ void setup()
 
   if (WiFi.status() == WL_NO_MODULE)
   {
-    Serial.println("Communication with WiFi module failed!");
+    logInformation("Communication with WiFi module failed!");
     // don't continue
     while (true)
       ;
@@ -76,24 +97,24 @@ void setup()
   String fv = WiFi.firmwareVersion();
   if (fv < WIFI_FIRMWARE_LATEST_VERSION)
   {
-    Serial.println("Please upgrade the firmware");
+    logInformation("Please upgrade the firmware");
   }
 
   // attempt to connect to WiFi network:
   while (status != WL_CONNECTED)
   {
-    Serial.print("Attempting to connect to SSID: ");
-    Serial.println(ssid);
+    logInformation("Attempting to connect to SSID: ");
+    logInformation(ssid);
     // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
     status = WiFi.begin(ssid, pass);
 
     // wait 10 seconds for connection:
     delay(10000);
   }
-  Serial.println("Connected to WiFi");
+  logInformation("Connected to WiFi");
   printWifiStatus();
 
-  Serial.println("\nStarting connection to server...");
+  logInformation("\nStarting connection to server...");
   // if you get a connection, report back via serial:
   Udp.begin(firstPort);
   PumpUdp.begin(secondPort);
@@ -102,12 +123,14 @@ void setup()
 
   if (rtc.enableBattery())
   {
-    Serial.println("Battery activated correctly.");
+    logInformation("Battery activated correctly.");
   }
   else
   {
-    Serial.println("ERROR activating battery.");
+    logInformation("ERROR activating battery.");
   }
+
+  Serial.print("Initializing SD card...");
 
   bool status;
 
@@ -115,37 +138,37 @@ void setup()
   status = amg.begin();
   if (!status)
   {
-    Serial.println("Could not find a valid AMG88xx sensor, check wiring!");
+    logInformation("Could not find a valid AMG88xx sensor, check wiring!");
     while (1)
       ;
   }
 
-  Serial.println("-- Pixels Test --");
-
-  Serial.println();
+  logInformation("-- Pixels Test --");
 
   delay(100); // let sensor boot up
 }
 
 void loop()
 {
+  rtc.refresh();
   rotatoServo.write(rotation);
 
   amg.readPixels(pixels);
 
-  UdpSendContent("BEGIN");
-
-  // UdpSendRtc();
-
+  UdpSendContent("BEGINT");
   UdpSendThermal();
-
-  UdpSendContent("END");
-
+  UdpSendContent("ENDT");
+  UdpSendContent("BEGINL");
+  UdpSendContent(readLogFile());
+  UdpSendContent("ENDL");
+  
   int packetSize = PumpUdp.parsePacket();
   if (packetSize)
   {
-    Serial.print("Received packet of size ");
-    Serial.println(packetSize);
+    logInformation("Received packet of size ");
+
+    sprintf(packetSizeString, "%d", packetSize);
+    logInformation(packetSizeString);
 
     // read the packet into packetBufffer
     int len = PumpUdp.read(packetBuffer, 255);
@@ -153,8 +176,8 @@ void loop()
     {
       packetBuffer[len] = 0;
     }
-    Serial.println("Contents:");
-    Serial.println(packetBuffer);
+    logInformation("Contents:");
+    logInformation(packetBuffer);
 
     if (strcmp(packetBuffer, "SAP") == 0) // spray and pray
     {
@@ -176,8 +199,9 @@ void loop()
   if (packetSize)
   {
     int pos;
-    Serial.print("Received packet of size ");
-    Serial.println(packetSize);
+    logInformation("Received packet of size ");
+    sprintf(packetSizeString, "%d", packetSize);
+    logInformation(packetSizeString);
 
     // read the packet into packetBufffer
     int len = Udp.read(packetBuffer, 255);
@@ -185,8 +209,8 @@ void loop()
     {
       packetBuffer[len] = 0;
     }
-    Serial.println("Contents:");
-    Serial.println(packetBuffer);
+    logInformation("Contents:");
+    logInformation(packetBuffer);
 
     sscanf(packetBuffer, "%d", &pos);
 
@@ -257,28 +281,17 @@ void loop()
 void printWifiStatus()
 {
   // print the SSID of the network you're attached to:
-  Serial.print("SSID: ");
-  Serial.println(WiFi.SSID());
+  logInformation("SSID: ");
+  logInformation(WiFi.SSID());
 
   // print your board's IP address:
   IPAddress ip = WiFi.localIP();
-  Serial.print("IP Address: ");
-  Serial.println(ip);
+  logInformation("IP Address: ");
+  char ipString[20];
 
-  // print the received signal strength:
-  long rssi = WiFi.RSSI();
-  Serial.print("signal strength (RSSI):");
-  Serial.print(rssi);
-  Serial.println(" dBm");
-}
+  String(ip).toCharArray(ipString, sizeof(ipString));
 
-void UdpSendRtc()
-{
-  rtc.refresh();
-
-  sprintf(datetime, format, rtc.year(), rtc.month(), rtc.day(), rtc.hour(), rtc.minute(), rtc.second(), rtc.dayOfWeek());
-
-  UdpSendContent(datetime);
+  logInformation(ipString);
 }
 
 void UdpSendThermal()
@@ -291,9 +304,48 @@ void UdpSendThermal()
   }
 }
 
-void UdpSendContent(char content[])
+void UdpSendContent(const char content[])
 {
   Udp.beginPacket("10.42.0.82", 8081);
   Udp.write(content);
   Udp.endPacket();
+}
+
+void logInformation(const char *content)
+{
+  if (logFile)
+  {
+    sprintf(datetime, format, rtc.year(), rtc.month(), rtc.day(), rtc.hour(), rtc.minute(), rtc.second(), rtc.dayOfWeek());
+
+    logFile.print(datetime);
+    logFile.println(content);
+    // close the file:
+    logFile.close();
+  }
+  else
+  {
+    // if the file didn't open, print an error:
+    Serial.println("error opening test.txt");
+  }
+}
+
+const char *readLogFile()
+{
+  if (logFile)
+  {
+    std::string logs;
+    // read from the file until there's nothing else in it:
+    while (logFile.available())
+    {
+      logs += logFile.read();
+    }
+
+    return logs.c_str();
+  }
+  else
+  {
+    // if the file didn't open, print an error:
+    Serial.println("error opening test.txt");
+    return "Error opening test.txt";
+  }
 }
