@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"strings"
 )
 
 type Config struct {
@@ -53,6 +54,7 @@ func main() {
 	router := gin.Default()
 	router.StaticFile("/", "index.html")
 	router.POST("/squirt", toggleSquirt)
+	router.POST("/reenableSentry", reenableSentry)
 	router.POST("/direction", changeDirection)
 	router.GET("/cam", func(c *gin.Context) {
 		c.JSON(200, gin.H{"frame": frameBuf})
@@ -90,14 +92,18 @@ func listenForFrames() {
 		// "BEGIN" = set current pixel to 0
 		// otherwise every packet is a float64 for the current pixel
 
-		recv := string(recvBuf[:n])
+		recv := strings.Trim(string(recvBuf[:n]), "\n")
 
-		if recv == "BEGIN" {
+		if recv == "BEGINT" {
 			currentPixel = 0
 			continue
 		}
 
-		if recv == "END" {
+		if recv == "ENDT" {
+			if currentPixel < 63 {
+				log.Println("got less than 64 pixels, ignoring")
+			}
+
 			log.Println("frame:")
 			for i := 0; i < 8; i++ {
 				for j := 0; j < 8; j++ {
@@ -145,6 +151,24 @@ func toggleSquirt(c *gin.Context) {
 		_, err = conn.Write([]byte("SAD"))
 	}
 
+	if err != nil {
+		log.Println(err)
+		c.JSON(500, gin.H{"error": "failed to send data to arduino"})
+		return
+	}
+
+	c.JSON(200, gin.H{"success": true})
+}
+
+func reenableSentry(c *gin.Context) {
+	conn, err := net.Dial("udp", config.ArduinoAddr+":8082")
+	if err != nil {
+		fmt.Println(err)
+		c.JSON(500, gin.H{"error": "failed to connect to arduino"})
+		return
+	}
+
+	_, err = conn.Write([]byte("RESUMÉ"))
 	if err != nil {
 		log.Println(err)
 		c.JSON(500, gin.H{"error": "failed to send data to arduino"})

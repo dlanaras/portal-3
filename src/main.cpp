@@ -218,24 +218,28 @@ void loop()
     if (pos >= MIN_ROTATO && pos <= MAX_ROTATO)
     {
       rotation = pos;
+      sentryMode = 0;
     }
     // send a reply, to the IP address and port that sent us the packet we received
   }
-
-  if (sentryMode)
+  
+  logInformation("sentryMode: ");
+  sprintf(packetSizeString, "%d", sentryMode);
+  logInformation(packetSizeString);
+  if (sentryMode == 1)
   {
     int weight[3] = {0, 0, 0};
     for (int i = 1; i <= AMG88xx_PIXEL_ARRAY_SIZE; i++)
     {
-      int displacement = i % 8;
-      if (pixels[i - 1] > 70)
+      int xPos = i % 8;
+      if (pixels[i - 1] > 40)
       {
 
-        if (displacement < 4) // to left
+        if (xPos < 4) // to left
         {
           weight[0]++;
         }
-        else if (displacement > 5) // to right
+        else if (xPos > 5) // to right
         {
           weight[2]++;
         }
@@ -246,12 +250,21 @@ void loop()
       }
     }
 
+    logInformation("weight: ");
+    sprintf(packetSizeString, "{%d, %d, %d}", weight[0], weight[1], weight[2]);
+    logInformation(packetSizeString);
+
     if (weight[0] > weight[1] && weight[0] > weight[2]) // go left
     {
       rotation -= 10;
+      if(rotation <= MIN_ROTATO)
+      {
+        rotation = MIN_ROTATO;
+      }
     }
     else if (weight[1] > weight[0] && weight[1] > weight[2]) // spurt water
     {
+      logInformation("squirtin' time!");
       digitalWrite(PIN_RELAY_PUMP, HIGH);
       delay(5000);
       digitalWrite(PIN_RELAY_PUMP, LOW);
@@ -259,6 +272,10 @@ void loop()
     else if (weight[2] > weight[0] && weight[2] > weight[1]) // go right
     {
       rotation += 10;
+      if(rotation >= MAX_ROTATO)
+      {
+        rotation = MAX_ROTATO;
+      }
     }
     else
     {
@@ -288,9 +305,8 @@ void printWifiStatus()
   // print your board's IP address:
   IPAddress ip = WiFi.localIP();
   logInformation("IP Address: ");
-  char ipString[20];
-
-  String(ip).toCharArray(ipString, sizeof(ipString));
+  char ipString[16];
+  sprintf(ipString, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
 
   logInformation(ipString);
 }
@@ -307,7 +323,7 @@ void UdpSendThermal()
 
 void UdpSendContent(const char content[])
 {
-  Udp.beginPacket("10.42.0.82", 8081);
+  Udp.beginPacket("192.168.1.86", 8081);
   Udp.write(content);
   Udp.endPacket();
 }

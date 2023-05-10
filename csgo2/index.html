@@ -21,6 +21,10 @@
             background: linear-gradient(to right, blue, white, red);
             color: white;
         }
+
+        #scale > div::after {
+            content: "°C";
+        }
     </style>
 </head>
 <body>
@@ -36,16 +40,24 @@
     <input type="range" id="direction" min="0" max="180" value="90">
 </label><br>
 
+<button id="reenableSentry">Reenable Sentry</button><br>
+
 <canvas id="cam" width="500" height="500"></canvas><br>
 <div id="scale">
     <div id="min">0</div>
     <div id="max">100</div>
 </div>
+
+kb shortcuts:<br>
+left/right arrow: change direction<br>
+space: squirt<br>
+s: reenable sentry<br>
 </body>
 
 <script>
     const squirt = document.getElementById("squirt")
     const direction = document.getElementById("direction")
+    const reenableSentryBtn = document.getElementById("reenableSentry")
     const cam = document.getElementById("cam")
     const ctx = cam.getContext("2d")
 
@@ -73,9 +85,22 @@
         }
     }
 
+    async function reenableSentry() {
+        const resp = await fetch("/reenableSentry", {
+            method: "POST"
+        })
+        const respJson = await resp.json()
+
+        if (respJson.error) {
+            alert(respJson.error)
+        }
+    }
+
     squirt.addEventListener("change", setSquirt)
 
     direction.addEventListener("input", setDirection)
+
+    reenableSentryBtn.addEventListener("click", reenableSentry);
 
     window.addEventListener("keydown", e => {
         if (e.key === "ArrowRight") {
@@ -87,6 +112,8 @@
         } else if (e.key === " ") {
             squirt.checked = !squirt.checked
             setSquirt()
+        } else if (e.key === "s") {
+            reenableSentry()
         }
     })
 
